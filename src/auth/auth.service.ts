@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     ConflictException,
     Injectable,
     InternalServerErrorException,
@@ -20,6 +21,7 @@ import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 
 import { AccessControlService } from "src/modules/permissions/access-control.service";
+import { paises } from "./utils/paises";
 
 type UsuarioAuth = NonNullable<
     Awaited<ReturnType<UserService["buscarPorCorreo"]>>
@@ -79,7 +81,18 @@ export class AuthService {
         });
 
         if (existente) {
-            throw new ConflictException('Ya existe una cuenta con este correo');
+            throw new ConflictException(
+                'Ya existe una cuenta con este correo',
+            );
+        }
+
+        const paisCodigo = dto.paisCodigo.trim().toUpperCase();
+        const pais = paises[paisCodigo];
+
+        if (!pais) {
+            throw new BadRequestException(
+                'El código del país no es válido',
+            );
         }
 
         const contrasenaHash = await bcrypt.hash(dto.contrasena, 12);
@@ -97,13 +110,17 @@ export class AuthService {
                             nombre: dto.nombre.trim(),
                             apellidoPaterno: dto.apellidoPaterno?.trim(),
                             apellidoMaterno: dto.apellidoMaterno?.trim(),
-                            paisCodigo: dto.paisCodigo.trim().toUpperCase(),
+                            paisCodigo,
+                            pais,
                         },
                     },
                 },
             });
 
-            await this.accessControlService.asignarRolEstudiante(usuario.id, tx);
+            await this.accessControlService.asignarRolEstudiante(
+                usuario.id,
+                tx,
+            );
         });
 
         const usuarioCreado = await this.userService.buscarPorCorreo(correo);
