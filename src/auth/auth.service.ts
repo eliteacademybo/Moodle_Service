@@ -87,13 +87,18 @@ export class AuthService {
         }
 
         const paisCodigo = dto.paisCodigo.trim().toUpperCase();
-        const pais = paises[paisCodigo];
 
-        if (!pais) {
+        const paisEncontrado = paises.find(
+            p => p.codigo.toUpperCase() === paisCodigo,
+        );
+
+        if (!paisEncontrado) {
             throw new BadRequestException(
                 'El código del país no es válido',
             );
         }
+
+        const pais = paisEncontrado.nombre;
 
         const contrasenaHash = await bcrypt.hash(dto.contrasena, 12);
         const username = await this.generarUsername(correo);
