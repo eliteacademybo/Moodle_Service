@@ -3,6 +3,7 @@ import {
     Injectable,
     Logger,
     OnModuleInit,
+    ServiceUnavailableException,
 } from '@nestjs/common';
 import { drive_v3, google } from 'googleapis';
 import { Readable } from 'stream';
@@ -10,7 +11,7 @@ import { Readable } from 'stream';
 @Injectable()
 export class GoogleDriveService implements OnModuleInit {
     private readonly logger = new Logger(GoogleDriveService.name);
-    private readonly drive: drive_v3.Drive;
+    private drive: drive_v3.Drive | null = null;
 
     constructor() {
         const {
@@ -24,9 +25,10 @@ export class GoogleDriveService implements OnModuleInit {
             !GOOGLE_DRIVE_CLIENT_SECRET ||
             !GOOGLE_DRIVE_REFRESH_TOKEN
         ) {
-            throw new Error(
-                'Faltan variables de Google Drive en el .env',
+            this.logger.warn(
+                'Faltan variables de Google Drive. El servicio iniciará deshabilitado.',
             );
+            return;
         }
 
         const auth = new google.auth.OAuth2(
@@ -45,6 +47,13 @@ export class GoogleDriveService implements OnModuleInit {
     }
 
     async onModuleInit() {
+        if (!this.drive) {
+            this.logger.warn(
+                'Google Drive no está configurado. El backend continuará funcionando.',
+            );
+            return;
+        }
+
         try {
             const { data } = await this.drive.about.get({
                 fields: 'user(displayName,emailAddress)',
@@ -58,11 +67,20 @@ export class GoogleDriveService implements OnModuleInit {
             );
         } catch (error) {
             this.logger.error(
-                'No se pudo conectar con Google Drive',
+                'No se pudo conectar con Google Drive. El backend continuará funcionando.',
+                error instanceof Error ? error.message : String(error),
             );
-
-            throw error;
         }
+    }
+
+    private obtenerDrive(): drive_v3.Drive {
+        if (!this.drive) {
+            throw new ServiceUnavailableException(
+                'Google Drive no está disponible temporalmente.',
+            );
+        }
+
+        return this.drive;
     }
 
     async subirVideo(
@@ -80,23 +98,18 @@ export class GoogleDriveService implements OnModuleInit {
             );
         }
 
-        const { data } = await this.drive.files.create({
+        const drive = this.obtenerDrive();
+
+        const { data } = await drive.files.create({
             requestBody: {
                 name: `${Date.now()}-${video.originalname}`,
                 mimeType: video.mimetype,
-
-                ...(folderId
-                    ? {
-                        parents: [folderId],
-                    }
-                    : {}),
+                ...(folderId ? { parents: [folderId] } : {}),
             },
-
             media: {
                 mimeType: video.mimetype,
                 body: Readable.from(video.buffer),
             },
-
             fields: 'id,name,mimeType,size',
         });
 
@@ -115,7 +128,9 @@ export class GoogleDriveService implements OnModuleInit {
     }
 
     async obtenerArchivo(fileId: string) {
-        const { data } = await this.drive.files.get({
+        const drive = this.obtenerDrive();
+
+        const { data } = await drive.files.get({
             fileId,
             fields: 'id,name,mimeType,size',
         });
@@ -123,18 +138,16 @@ export class GoogleDriveService implements OnModuleInit {
         return data;
     }
 
-    async obtenerVideo(
-        fileId: string,
-        range?: string,
-    ) {
-        const { data } = await this.drive.files.get(
+    async obtenerVideo(fileId: string, range?: string) {
+        const drive = this.obtenerDrive();
+
+        const { data } = await drive.files.get(
             {
                 fileId,
                 alt: 'media',
             },
             {
                 responseType: 'stream',
-
                 ...(range
                     ? {
                         headers: {
@@ -169,7 +182,6 @@ export class GoogleDriveService implements OnModuleInit {
             }
         }
 
-        // Permite mandar directamente el fileId.
         if (
             !limpio.includes('/') &&
             !limpio.startsWith('http')
