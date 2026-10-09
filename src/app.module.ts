@@ -27,6 +27,7 @@ import { LeadModule } from './lead/lead.module';
 import { DescuentoModule } from './modules/descuento/descuento.module';
 import { VentasModule } from './ventas/ventas.module';
 import { GoogleDriveModule } from './google-drive/google-drive.module';
+import { ClientErrorsModule } from './client-errors/ClientErrorsModule ';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { GoogleDriveModule } from './google-drive/google-drive.module';
     DescuentoModule,
     VentasModule,
     GoogleDriveModule,
+    ClientErrorsModule,
   ],
   controllers: [AppController],
   providers: [
